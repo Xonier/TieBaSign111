@@ -6,15 +6,16 @@ on:
       - main
   schedule:
     - cron: '5 16,22 * * *'
+  workflow_dispatch:
 
 jobs:
   tieba_sign:
     runs-on: ubuntu-latest
     steps:
       - name: 'Checkout codes'
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: 'Set python'
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: 'Install dependencies'
@@ -27,3 +28,37 @@ jobs:
           TO: ${{ secrets.TO }}
           AUTH: ${{ secrets.AUTH }}
         run: python main.py
+
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 'Checkout codes'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: 'Monthly keepalive commit'
+        shell: bash
+        run: |
+          day="$(date -u +%d)"
+          hour="$(date -u +%H)"
+          if [ "$day" != "01" ] || [ "$hour" != "16" ]; then
+            echo "Skip keepalive on UTC day ${day}, hour ${hour}."
+            exit 0
+          fi
+
+          ts="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          echo "${ts}" > .github/keepalive
+
+          if [ -z "$(git status --porcelain .github/keepalive)" ]; then
+            echo "No keepalive changes."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive
+          git commit -m "chore: keepalive [skip ci]"
+          git push
